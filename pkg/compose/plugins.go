@@ -17,6 +17,7 @@
 package compose
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -92,8 +93,8 @@ func (s *composeService) executePlugin(ctx context.Context, cmd *exec.Cmd, comma
 	}
 	eg.Go(cmd.Wait)
 
-	decoder := json.NewDecoder(stdout)
 	defer func() { _ = stdout.Close() }()
+	scanner := bufio.NewScanner(stdout)
 
 	variables := types.Mapping{}
 
@@ -109,14 +110,14 @@ func (s *composeService) executePlugin(ctx context.Context, cmd *exec.Cmd, comma
 	default:
 		return nil, fmt.Errorf("unsupported plugin command: %s", command)
 	}
-	for {
+	for scanner.Scan() {
 		var msg JsonMessage
-		err = decoder.Decode(&msg)
+		err = json.Unmarshal(scanner.Bytes(), &msg)
 		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to decode plugin response: %w, output: %s", err, allText(scanner))
 		}
 		switch msg.Type {
 		case ErrorType:
@@ -191,4 +192,12 @@ func (s *composeService) setupPluginCommand(ctx context.Context, project *types.
 	otel.GetTextMapPropagator().Inject(ctx, &carrier)
 	cmd.Env = append(cmd.Env, types.Mapping(carrier).Values()...)
 	return cmd
+}
+
+func allText(scanner *bufio.Scanner) string {
+	allText := scanner.Text()
+	for scanner.Scan() {
+		allText += "\n" + scanner.Text()
+	}
+	return allText
 }
