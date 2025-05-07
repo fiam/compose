@@ -30,6 +30,7 @@ import (
 	"github.com/docker/cli/cli-plugins/manager"
 	"github.com/docker/cli/cli-plugins/socket"
 	"github.com/docker/compose/v2/pkg/progress"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -79,6 +80,10 @@ func (s *composeService) executePlugin(ctx context.Context, cmd *exec.Cmd, comma
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, err
+	}
+
+	if logrus.GetLevel() >= logrus.DebugLevel {
+		cmd.Stderr = os.Stderr
 	}
 
 	err = cmd.Start()
