@@ -186,6 +186,7 @@ func (s *composeService) setupPluginCommand(ctx context.Context, project *types.
 	}
 
 	cmd.Env = append(cmd.Env, fmt.Sprintf("DOCKER_CONTEXT=%s", s.dockerCli.CurrentContext()))
+	cmd.Env = append(cmd.Env, fmt.Sprintf("DOCKER_COMPOSE_SERVICE_NAME=%s", service.Name))
 
 	// propagate opentelemetry context to child process, see https://github.com/open-telemetry/oteps/blob/main/text/0258-env-context-baggage-carriers.md
 	carrier := propagation.MapCarrier{}
