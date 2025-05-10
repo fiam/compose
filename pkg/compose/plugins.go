@@ -174,8 +174,14 @@ func (s *composeService) setupPluginCommand(ctx context.Context, project *types.
 	args = append(args, service.Name)
 
 	cmd := exec.CommandContext(ctx, path, args...)
-	// Remove DOCKER_CLI_PLUGIN... variable so plugin can detect it run standalone
-	cmd.Env = filter(os.Environ(), manager.ReexecEnvvar)
+	// Remove DOCKER_CLI_PLUGIN... variable so plugin can detect it run standalone,
+	// as well as any environment variables defined in the service config
+	variablesToRemove := make([]string, len(service.Environment)+1)
+	variablesToRemove = append(variablesToRemove, manager.ReexecEnvvar)
+	for name := range service.Environment {
+		variablesToRemove = append(variablesToRemove, name)
+	}
+	cmd.Env = filterEnv(os.Environ(), variablesToRemove)
 
 	// Use docker/cli mechanism to propagate termination signal to child process
 	server, err := socket.NewPluginServer(nil)
@@ -187,6 +193,12 @@ func (s *composeService) setupPluginCommand(ctx context.Context, project *types.
 
 	cmd.Env = append(cmd.Env, fmt.Sprintf("DOCKER_CONTEXT=%s", s.dockerCli.CurrentContext()))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("DOCKER_COMPOSE_SERVICE_NAME=%s", service.Name))
+	for k, v := range service.Environment {
+		if v == nil {
+			continue
+		}
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, *v))
+	}
 
 	// propagate opentelemetry context to child process, see https://github.com/open-telemetry/oteps/blob/main/text/0258-env-context-baggage-carriers.md
 	carrier := propagation.MapCarrier{}
@@ -201,4 +213,22 @@ func allText(scanner *bufio.Scanner) string {
 		allText += "\n" + scanner.Text()
 	}
 	return allText
+}
+
+func filterEnv(environ []string, variablesToRemove []string) []string {
+	skip := make(map[string]struct{}, len(variablesToRemove))
+	for _, variable := range variablesToRemove {
+		skip[variable] = struct{}{}
+	}
+	filtered := make([]string, 0, len(environ))
+	for _, val := range environ {
+		if sep := strings.IndexByte(val, '='); sep >= 0 {
+			name := val[:sep]
+			if _, ok := skip[name]; ok {
+				continue
+			}
+		}
+		filtered = append(filtered, val)
+	}
+	return filtered
 }
