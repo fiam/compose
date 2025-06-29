@@ -19,10 +19,10 @@ package compose
 import (
 	"bytes"
 	"fmt"
-	"strings"
 
 	"github.com/compose-spec/compose-go/v2/types"
 	"github.com/docker/cli/cli/config/configfile"
+	"github.com/docker/docker/opts"
 )
 
 // --use-api-socket is not actually supported by the Docker Engine
@@ -41,12 +41,10 @@ func (s *composeService) useAPISocket(project *types.Project) (*types.Project, e
 		return project, nil
 	}
 
-	socket := s.dockerCli.DockerEndpoint().Host
-	if !strings.HasPrefix(socket, "unix://") {
-		return nil, fmt.Errorf("use_api_socket can only be used with unix sockets: docker endpoint %s is incompatible", socket)
+	socket, err := dockerEndpoint(s.dockerCli)
+	if err != nil {
+		return nil, fmt.Errorf("resolving API socket failed: %w", err)
 	}
-	socket = strings.TrimPrefix(socket, "unix://") // should we confirm absolute path?
-
 	creds, err := s.dockerCli.ConfigFile().GetAllCredentials()
 	if err != nil {
 		return nil, fmt.Errorf("resolving credentials failed: %w", err)
@@ -70,7 +68,7 @@ func (s *composeService) useAPISocket(project *types.Project) (*types.Project, e
 		service.Volumes = append(service.Volumes, types.ServiceVolumeConfig{
 			Type:   types.VolumeTypeBind,
 			Source: socket,
-			Target: "/var/run/docker.sock",
+			Target: opts.DefaultUnixSocket,
 		})
 
 		_, envvarPresent := service.Environment["DOCKER_CONFIG"]
